@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import joblib
-from tensorflow.keras.models import load_model
+from keras.models import load_model
 
 # ─── Page Config ───────────────────────────────────────────
 st.set_page_config(page_title="Stock Price Predictor", layout="wide")
