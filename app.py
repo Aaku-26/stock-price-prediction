@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import joblib
-from keras.models import load_model
 
 # ─── Page Config ───────────────────────────────────────────
 st.set_page_config(page_title="Stock Price Predictor", layout="wide")
@@ -20,7 +19,6 @@ end = st.sidebar.date_input("End Date", pd.to_datetime("2024-01-01"))
 @st.cache_data
 def load_data(ticker, start, end):
     df = yf.download(ticker, start=start, end=end)
-    # ✅ Fix multi-level columns from yfinance
     df.columns = df.columns.get_level_values(0)
     return df
 
@@ -56,25 +54,31 @@ if st.sidebar.button("🚀 Run Prediction"):
     st.subheader("📈 RSI Indicator")
     st.line_chart(df[['RSI']])
 
-    # ─── LSTM Prediction ───────────────────────────────────
-    st.subheader("🤖 LSTM Next Day Price Prediction")
+    # ─── Linear Regression Prediction ──────────────────────
+    st.subheader("🤖 Next Day Price Prediction")
 
-    try:
-        model = load_model('models/lstm_model.h5')
-        scaler = joblib.load('models/scaler.pkl')
+    from sklearn.linear_model import LinearRegression
 
-        close = df[['Close']].values
-        scaled = scaler.transform(close)
+    df['EMA_12'] = df['Close'].ewm(span=12, adjust=False).mean()
+    df['EMA_26'] = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = df['EMA_12'] - df['EMA_26']
+    df.dropna(inplace=True)
 
-        seq_len = 60
-        X_input = scaled[-seq_len:].reshape(1, seq_len, 1)
-        pred_scaled = model.predict(X_input)
-        pred_price = scaler.inverse_transform(pred_scaled)[0][0]
+    features = ['MA_20', 'MA_50', 'RSI', 'MACD', 'Volume']
+    X = df[features]
+    y = df['Close']
 
-        col1, col2 = st.columns(2)
-        col1.metric("Current Price", f"${df['Close'].iloc[-1]:.2f}")
-        col2.metric("Predicted Next Day", f"${pred_price:.2f}")
+    model = LinearRegression()
+    model.fit(X, y)
 
-    except Exception as e:
-        st.warning("⚠️ Train the LSTM model first by running the notebook!")
-        st.error(str(e))
+    last_row = df[features].iloc[-1].values.reshape(1, -1)
+    pred_price = model.predict(last_row)[0]
+
+    col1, col2 = st.columns(2)
+    col1.metric("Current Price", f"${df['Close'].iloc[-1]:.2f}")
+    col2.metric("Predicted Next Day", f"${pred_price:.2f}")
+
+    # ─── Prediction Chart ──────────────────────────────────
+    st.subheader("📊 Actual vs Predicted Prices")
+    df['Predicted'] = model.predict(X)
+    st.line_chart(df[['Close', 'Predicted']])
